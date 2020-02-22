@@ -74,6 +74,17 @@ $ dpkg -L lzf
 $ sudo dpkg -r lzf
 ```
 
+For Ubuntu 18.04 under Windows 10, this build works for me:
+
+```console
+$ sudo apt-get update
+$ sudo apt-get install make g++ gcc devscripts libpcre2-dev chrpath
+$ sudo apt-get install debhelper
+$ sudo update-alternatives --set fakeroot /usr/bin/fakeroot-tcp
+```
+
+Continue with above.
+
 The original [README](README) and [LICENSE](LICENSE) are included here, but
 the original configure and install scripts are not.
 
