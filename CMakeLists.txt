@@ -1,0 +1,18 @@
+cmake_minimum_required (VERSION 3.9.0)
+if (POLICY CMP0111)
+cmake_policy(SET CMP0111 OLD)
+endif ()
+project (lzf)
+include_directories (
+include
+)
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+if ($<CONFIG:Release>)
+add_compile_options (/arch:AVX2 /GL /std:c11 /wd4244)
+else ()
+add_compile_options (/arch:AVX2 /std:c11 /wd4244)
+endif ()
+else ()
+add_compile_options (-Wall -Wextra -Werror -O3 -ggdb -fno-omit-frame-pointer)
+endif ()
+add_library (lzf STATIC src/lzf_c.c src/lzf_d.c)

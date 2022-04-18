@@ -60,6 +60,7 @@ everything: all
 -include deb/Makefile
 
 liblzf_files := lzf_c lzf_d
+liblzf_cfile := src/lzf_c.c src/lzf_d.c
 liblzf_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(liblzf_files)))
 liblzf_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(liblzf_files)))
 liblzf_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(liblzf_files))) \
@@ -73,6 +74,7 @@ $(libd)/liblzf.a: $(liblzf_objs)
 $(libd)/liblzf.so: $(liblzf_dbjs)
 
 lzf_files := lzf
+lzf_cfile := src/lzf.c
 lzf_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(lzf_files)))
 lzf_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(lzf_files)))
 lzf_libs  := $(libd)/liblzf.so
@@ -80,9 +82,11 @@ lzf_lnk   := -llzf
 
 $(bind)/lzf: $(lzf_objs) $(lzf_libs)
 
-unlzf_objs := $(lzf_objs)
-unlzf_libs := $(lzf_libs)
-unlzf_lnk  := $(lzf_lnk)
+unlzf_objs  := $(lzf_objs)
+unlzf_cfile := src/lzf.c
+unlzf_deps  := $(lzf_deps)
+unlzf_libs  := $(lzf_libs)
+unlzf_lnk   := $(lzf_lnk)
 
 # so small, no need for symlink
 $(bind)/unlzf: $(unlzf_objs) $(unlzf_libs)
@@ -92,7 +96,33 @@ all_depends += $(liblzf_deps) $(lzf_deps)
 all_dirs    += $(bind) $(libd) $(objd) $(dependd)
 all_libs    += $(libd)/liblzf.a $(libd)/liblzf.so
 
-all: $(all_libs) $(all_exes)
+all: $(all_libs) $(all_exes) cmake
+
+.PHONY: cmake
+cmake: CMakeLists.txt
+
+.ONESHELL: CMakeLists.txt
+CMakeLists.txt: .copr/Makefile
+	@cat <<'EOF' > $@
+	cmake_minimum_required (VERSION 3.9.0)
+	if (POLICY CMP0111)
+	  cmake_policy(SET CMP0111 OLD)
+	endif ()
+	project (lzf)
+	include_directories (
+	  include
+	)
+	if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+	  if ($$<CONFIG:Release>)
+	    add_compile_options (/arch:AVX2 /GL /std:c11 /wd4244)
+	  else ()
+	    add_compile_options (/arch:AVX2 /std:c11 /wd4244)
+	  endif ()
+	else ()
+	  add_compile_options ($(cflags))
+	endif ()
+	add_library (lzf STATIC $(liblzf_cfile))
+	EOF
 
 # create directories
 $(dependd):

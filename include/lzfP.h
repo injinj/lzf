@@ -146,7 +146,9 @@ using namespace std;
 
 #ifndef LZF_USE_OFFSETS
 # if defined (WIN32)
-#  define LZF_USE_OFFSETS defined(_M_X64)
+#  if defined(_M_X64)
+#    define LZF_USE_OFFSETS 1
+#  endif
 # else
 #  if __cplusplus > 199711L
 #   include <cstdint>
