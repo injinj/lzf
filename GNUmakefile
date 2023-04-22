@@ -1,9 +1,10 @@
+# lzf makefile
 lsb_dist     := $(shell if [ -f /etc/os-release ] ; then \
-		  grep '^NAME=' /etc/os-release | sed 's/.*=\"//' | sed 's/ .*//' ; \
+                  grep '^NAME=' /etc/os-release | sed 's/.*=[\"]*//' | sed 's/[ \"].*//' ; \
                   elif [ -x /usr/bin/lsb_release ] ; then \
                   lsb_release -is ; else echo Linux ; fi)
 lsb_dist_ver := $(shell if [ -f /etc/os-release ] ; then \
-		  grep '^VERSION=' /etc/os-release | sed 's/.*=\"//' | sed 's/ .*//' | sed 's/\"//' ; \
+		  grep '^VERSION=' /etc/os-release | sed 's/.*=[\"]*//' | sed 's/[ \"].*//' ; \
                   elif [ -x /usr/bin/lsb_release ] ; then \
                   lsb_release -rs | sed 's/[.].*//' ; else uname -r | sed 's/[-].*//' ; fi)
 #lsb_dist     := $(shell if [ -x /usr/bin/lsb_release ] ; then lsb_release -is ; else uname -s ; fi)
@@ -33,15 +34,35 @@ endif
 ifeq (-a,$(findstring -a,$(port_extra)))
   default_cflags := -fsanitize=address -ggdb -O3
 endif
-
-CC          ?= gcc -std=c11
+ifeq (-mingw,$(findstring -mingw,$(port_extra)))
+  CC    := /usr/bin/x86_64-w64-mingw32-gcc
+  mingw := true
+endif
+# msys2 using ucrt64
+ifeq (MSYS2,$(lsb_dist))
+  mingw := true
+endif
+CC          ?= gcc
 cc          := $(CC)
+clink       := $(CC)
 arch_cflags := -fno-omit-frame-pointer
-gcc_wflags  := -Wall -Wextra -Werror
-fpicflags   := -fPIC
-soflag      := -shared
-rpath       := -Wl,-rpath,$(pwd)/$(libd)
-
+gcc_wflags  := -Wall -Werror -Wextra
+# if windows cross compile
+ifeq (true,$(mingw))
+dll       := dll
+exe       := .exe
+soflag    := -shared -Wl,--subsystem,windows
+fpicflags := -fPIC -DLZF_SHARED
+else
+dll       := so
+exe       :=
+soflag    := -shared
+fpicflags := -fPIC
+endif
+# make apple shared lib
+ifeq (Darwin,$(lsb_dist))
+dll       := dylib
+endif
 # rpmbuild uses RPM_OPT_FLAGS
 ifeq ($(RPM_OPT_FLAGS),)
 CFLAGS ?= $(default_cflags)
@@ -53,7 +74,8 @@ cflags := $(gcc_wflags) $(CFLAGS) $(arch_cflags)
 INCLUDES ?=
 DEFINES  ?=
 includes := -Iinclude $(INCLUDES)
-defines  :=
+defines  := $(DEFINES)
+rpath    := -Wl,-rpath,$(pwd)/$(libd)
 
 .PHONY: everything
 everything: all
@@ -78,16 +100,16 @@ liblzf_ver   := $(major_num)
 
 $(libd)/liblzf.a: $(liblzf_objs)
 
-$(libd)/liblzf.so: $(liblzf_dbjs)
+$(libd)/liblzf.$(dll): $(liblzf_dbjs)
 
 lzf_files := lzf
 lzf_cfile := src/lzf.c
 lzf_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(lzf_files)))
 lzf_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(lzf_files)))
-lzf_libs  := $(libd)/liblzf.so
+lzf_libs  := $(libd)/liblzf.$(dll)
 lzf_lnk   := -llzf
 
-$(bind)/lzf: $(lzf_objs) $(lzf_libs)
+$(bind)/lzf$(exe): $(lzf_objs) $(lzf_libs)
 
 unlzf_objs  := $(lzf_objs)
 unlzf_cfile := src/lzf.c
@@ -96,12 +118,12 @@ unlzf_libs  := $(lzf_libs)
 unlzf_lnk   := $(lzf_lnk)
 
 # so small, no need for symlink
-$(bind)/unlzf: $(unlzf_objs) $(unlzf_libs)
+$(bind)/unlzf$(exe): $(unlzf_objs) $(unlzf_libs)
 
-all_exes    += $(bind)/lzf $(bind)/unlzf
+all_exes    += $(bind)/lzf$(exe) $(bind)/unlzf$(exe)
 all_depends += $(liblzf_deps) $(lzf_deps)
 all_dirs    += $(bind) $(libd) $(objd) $(dependd)
-all_libs    += $(libd)/liblzf.a $(libd)/liblzf.so
+all_libs    += $(libd)/liblzf.a $(libd)/liblzf.$(dll)
 
 all: $(all_libs) $(all_exes) cmake
 
@@ -160,9 +182,9 @@ endif
 # target used by rpmbuild
 .PHONY: dist_bins
 dist_bins: $(all_libs) $(all_exes)
-	$(remove_rpath) $(libd)/liblzf.so
-	$(remove_rpath) $(bind)/lzf
-	$(remove_rpath) $(bind)/unlzf
+	$(remove_rpath) $(libd)/liblzf.$(dll)
+	$(remove_rpath) $(bind)/lzf$(exe)
+	$(remove_rpath) $(bind)/unlzf$(exe)
 
 # target for building installable rpm
 .PHONY: dist_rpm
@@ -207,11 +229,17 @@ $(objd)/%.fpic.o: src/%.c
 $(libd)/%.a:
 	ar rc $@ $($(*)_objs)
 
-$(libd)/%.so:
-	$(cc) $(soflag) $(cflags) -o $@.$($(*)_spec) -Wl,-soname=$(@F).$($(*)_ver) $($(*)_dbjs) $($(*)_dlnk) $(cpp_dll_lnk) $(sock_lib) $(math_lib) $(thread_lib) $(malloc_lib) $(dynlink_lib) && \
+ifeq (Darwin,$(lsb_dist))
+$(libd)/%.dylib:
+	$(clink) -dynamiclib $(cflags) -o $@.$($(*)_dylib).dylib -current_version $($(*)_dylib) -compatibility_version $($(*)_ver) $($(*)_dbjs) $($(*)_dlnk) $(sock_lib) $(math_lib) $(thread_lib) $(malloc_lib) $(dynlink_lib) && \
+	cd $(libd) && ln -f -s $(@F).$($(*)_dylib).dylib $(@F).$($(*)_ver).dylib && ln -f -s $(@F).$($(*)_ver).dylib $(@F)
+else
+$(libd)/%.$(dll):
+	$(clink) $(soflag) $(rpath) $(cflags) -o $@.$($(*)_spec) -Wl,-soname=$(@F).$($(*)_ver) $($(*)_dbjs) $($(*)_dlnk) $(sock_lib) $(math_lib) $(thread_lib) $(malloc_lib) $(dynlink_lib) && \
 	cd $(libd) && ln -f -s $(@F).$($(*)_spec) $(@F).$($(*)_ver) && ln -f -s $(@F).$($(*)_ver) $(@F)
+endif
 
-$(bind)/%:
+$(bind)/%$(exe):
 	$(cc) $(cflags) $(rpath) -o $@ $($(*)_objs) -L$(libd) $($(*)_lnk) $(cpp_lnk) $(sock_lib) $(math_lib) $(thread_lib) $(malloc_lib) $(dynlink_lib)
 
 $(dependd)/%.d: src/%.c

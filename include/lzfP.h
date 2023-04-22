@@ -138,10 +138,12 @@
 #ifdef __cplusplus
 # include <cstring>
 # include <climits>
+# include <cstdint>
 using namespace std;
 #else
 # include <string.h>
 # include <limits.h>
+# include <stdint.h>
 #endif
 
 #ifndef LZF_USE_OFFSETS
@@ -150,11 +152,6 @@ using namespace std;
 #    define LZF_USE_OFFSETS 1
 #  endif
 # else
-#  if __cplusplus > 199711L
-#   include <cstdint>
-#  else
-#   include <stdint.h>
-#  endif
 #  define LZF_USE_OFFSETS (UINTPTR_MAX > 0xffffffffU)
 # endif
 #endif
